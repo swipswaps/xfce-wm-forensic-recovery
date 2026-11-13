@@ -25,12 +25,20 @@ Persist `GTK_CSD=0` in `~/.config/environment.d/10-gtk-csd.conf` as plain
 - tibet-snap — cryptographic snapshots, Python rollback-plan API
 - timeshift — optional full-system restore
 
+## Pages build_type=legacy
+
+Branch-based Pages: GitHub serves what is pushed to `main` at `/`, with
+`.nojekyll` preventing Jekyll. The API requires a two-step enable on some
+repos (POST workflow, then PUT legacy) to avoid a documented 422.
+
 ## References
 
 - xfwm4 upstream: <https://gitlab.xfce.org/xfce/xfwm4>
 - environment.d(5): <https://man7.org/linux/man-pages/man5/environment.d.5.html>
 - GitHub Pages API: <https://docs.github.com/en/rest/pages/pages>
+- Pages publish source: <https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site>
 - gh api nested fields: <https://cli.github.com/manual/gh_api>
+- two-step workaround: <https://github.com/orgs/community/discussions/144171>
 - statedrift: <https://github.com/statedrift/statedrift>
 - configsnap: <https://packages.fedoraproject.org/pkgs/configsnap/configsnap/>
 - tibet-snap: <https://pypi.org/project/tibet-snap/>
