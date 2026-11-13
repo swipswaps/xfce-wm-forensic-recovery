@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>XFCE WM — Silent Failure &amp; Forensic Recovery</title>
 <style>
 :root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--card:#161b22;--border:#30363d;--warn:#d29922;--ok:#3fb950}
@@ -12,10 +13,10 @@ h2{margin-top:2.75rem;border-bottom:1px solid var(--border);padding-bottom:.4rem
 h3{margin-top:1.75rem;color:var(--accent)}
 a{color:var(--accent)}
 code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
-pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow:auto;line-height:1.45}
+pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow:auto;line-height:1.45;margin:0}
 code{background:var(--card);padding:.1em .35em;border-radius:4px}
 pre code{background:none;padding:0}
-.lead{font-size:1.05rem;color:var(--fg)}
+.lead{font-size:1.05rem}
 .muted{color:var(--muted)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin:1rem 0}
 .ok{color:var(--ok)}.warn{color:var(--warn)}
@@ -25,7 +26,27 @@ th{color:var(--muted);font-weight:600}
 .glossary dt{font-weight:600;color:var(--accent);margin-top:1.1rem}
 .glossary dd{margin:.25rem 0 0 0;padding:0}
 ol li, ul li{margin:.35rem 0}
+
+/* toolbar + copy/download affordances */
+.toolbar{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1.5rem}
+.btn{display:inline-block;background:var(--card);border:1px solid var(--border);border-radius:6px;
+     padding:.45rem .8rem;font:inherit;font-size:.9em;color:var(--fg);text-decoration:none;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.codeblock{position:relative;margin:1rem 0}
+.codebar{display:flex;justify-content:flex-end;gap:.4rem;margin-bottom:.3rem}
+.copybtn{background:var(--card);border:1px solid var(--border);border-radius:6px;
+         padding:.25rem .65rem;font:inherit;font-size:.8em;color:var(--muted);cursor:pointer}
+.copybtn:hover{color:var(--accent);border-color:var(--accent)}
+.dlbtn{background:var(--card);border:1px solid var(--border);border-radius:6px;
+       padding:.25rem .65rem;font:inherit;font-size:.8em;color:var(--muted);text-decoration:none}
+.dlbtn:hover{color:var(--accent);border-color:var(--accent)}
 </style></head><body><main>
+
+<div class="toolbar">
+  <a id="dl-zip" class="btn" href="#" download>Download repo .zip</a>
+  <a class="btn" href="#scripts">Audit &amp; fix scripts ↓</a>
+  <a class="btn" href="scripts/forensic-baseline.sh" download>Download forensic-baseline.sh</a>
+</div>
 
 <h1>XFCE Window Manager: Silent Failure &amp; Forensic Recovery</h1>
 
@@ -258,9 +279,7 @@ requires RENDER).</td>
 </tr>
 </table>
 
-<p>
-Example of a broken state, run together:
-</p>
+<p>Example of a broken state, run together:</p>
 
 <pre><code>$ pgrep -x xfwm4
 $ pgrep -x xfce4-session
@@ -285,24 +304,16 @@ X11 for RENDER, was refused, and exited silently.
 <p>Four pieces of this command each guard against a different failure:</p>
 
 <ul>
-<li>
-<code>setsid</code> — run in a new session with no controlling terminal.
-Without this, the WM dies the moment you close the terminal.
-</li>
-<li>
-<code>nohup</code> — ignore the SIGHUP signal that logout sends.
-Belt-and-braces with <code>setsid</code>.
-</li>
-<li>
-<code>--compositor=off</code> — do not attempt to enable the compositor.
+<li><code>setsid</code> — run in a new session with no controlling terminal.
+Without this, the WM dies the moment you close the terminal.</li>
+<li><code>nohup</code> — ignore the SIGHUP signal that logout sends.
+Belt-and-braces with <code>setsid</code>.</li>
+<li><code>--compositor=off</code> — do not attempt to enable the compositor.
 This is the crucial flag: it skips the code path that needs RENDER, so
-the WM starts and stays running.
-</li>
-<li>
-<code>&gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code> — send stdout
+the WM starts and stays running.</li>
+<li><code>&gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code> — send stdout
 and stderr to a log, detach stdin, and run in the background so your
-shell prompt returns immediately.
-</li>
+shell prompt returns immediately.</li>
 </ul>
 
 <p>
@@ -455,12 +466,6 @@ to its predecessor, so a retroactive edit to an old snapshot is detectable.
 sudo statedrift snap
 statedrift diff HEAD~1 HEAD</code></pre>
 
-<p>Example diff:</p>
-
-<pre><code>+ package: htop 3.3.0-1.fc43
-- service: firewalld.service (running)
-+ user: alice (uid 1001)</code></pre>
-
 <p>
 <code>statedrift verify</code> reports whether the chain is intact.
 <code>statedrift export</code> produces a redacted evidence bundle for an
@@ -472,58 +477,140 @@ external auditor or a support ticket.
 <p>
 configsnap is packaged in Fedora's own repositories. It records "important
 system state" — packages, services, kernel modules, user accounts, network
-interfaces — and diffs it against a stored baseline.
+interfaces — and, when the phase name contains <code>post</code> or
+<code>rollback</code>, automatically diffs against the stored
+<code>pre</code> snapshot[reference:5].
 </p>
 
 <pre><code>sudo dnf install -y configsnap
-sudo configsnap --phase pre
-# ... something happens ...
-sudo configsnap --phase post</code></pre>
+sudo configsnap -t mychange -p pre  -d /var/log/configsnap -v
+# ... change something ...
+sudo configsnap -t mychange -p post -d /var/log/configsnap -v
+# re-diff without recollecting:
+sudo configsnap -C --pre=pre -p post -t mychange -d /var/log/configsnap -v</code></pre>
 
 <p>
-The <code>post</code> phase writes a diff file listing what changed. It is
-a lightweight audit before and after a system change.
+The one-shot wrapper in this repo collapses that into three subcommands:
+</p>
+
+<pre><code>sudo scripts/configsnap-baseline.sh pre
+sudo scripts/configsnap-baseline.sh post
+sudo scripts/configsnap-baseline.sh report &lt;tag&gt;</code></pre>
+
+<p>
+It writes under <code>/var/log/configsnap/&lt;tag&gt;/</code>, passes
+<code>-v</code> so progress is visible, and refuses to run without root
+because configsnap collects data as root.
 </p>
 
 <h3>tibet-snap — cryptographic snapshots and rollback plans</h3>
 
 <p>
-tibet-snap focuses on file-level snapshots with cryptographic integrity (a
-signed token chain). Its distinguishing feature is
+tibet-snap creates TIBET-sealed snapshots (paths, SHA-256 hashes,
+timestamps, sizes, permissions) and chains every operation into a
+tamper-evident audit trail. Its distinguishing feature is
 <strong>rollback plan generation</strong>: given a snapshot, it produces a
-concrete list of "restore this file, remove that file, revert this setting"
-actions.
+concrete list of restore/remove/revert actions[reference:7].
 </p>
 
 <pre><code>python3 -m pip install --user tibet-snap
-tibet-snap create baseline /etc/X11 /etc/systemd
-tibet-snap compare &lt;id_a&gt; &lt;id_b&gt;
-python3 - &lt;&lt;'PY'
+tibet-snap create baseline /etc/X11 /etc/systemd /etc/xdg
+tibet-snap list
+tibet-snap verify &lt;id&gt;
+tibet-snap compare &lt;id_a&gt; &lt;id_b&gt;</code></pre>
+
+<p>
+Rollback plans are exposed through the Python API, not the CLI:
+</p>
+
+<pre><code>python3 - &lt;&lt;'PY'
 from tibet_snap import SnapEngine
 engine = SnapEngine(store_dir=".tibet-snap")
-for action in engine.rollback_plan(engine.list_snapshots()[-1].id):
-    print(action)
+snap = engine.create_snapshot("pre-deploy", paths=["/etc/X11"])
+for action in engine.rollback_plan(snap.id):
+    print(action["action"], action["path"])
 PY</code></pre>
+
+<p>
+The one-shot wrapper in this repo does create → list → verify → rollback
+plan in a single invocation:
+</p>
+
+<pre><code>scripts/tibet-snap-baseline.sh baseline-$(date +%Y%m%d-%H%M%S)</code></pre>
+
+<p>
+It probes for <code>tibet-snap</code> and falls back to
+<code>tibet-wayback</code>, since upstream marks tibet-snap deprecated in
+favour of that successor[reference:8]. The store lives at
+<code>~/.local/state/tibet-snap</code> by default; override with
+<code>TIBET_STORE=…</code>.
+</p>
 
 <h3>Which tool when</h3>
 
 <table>
-<tr><th>Question</th><th>Tool</th></tr>
+<tr><th>Question</th><th>Tool / script</th></tr>
+<tr><td>"What changed on this host between yesterday and today?"</td><td>statedrift diff</td></tr>
+<tr><td>"Prove to an auditor that these logs were not altered."</td><td>statedrift verify + export</td></tr>
+<tr><td>"Quick diff of packages/services/users after a config change."</td><td><code>configsnap-baseline.sh pre</code> → change → <code>… post</code></td></tr>
+<tr><td>"Given this snapshot, how do I get back to that state?"</td><td><code>tibet-snap-baseline.sh</code> / <code>recover.sh</code></td></tr>
+<tr><td>"Give me everything in one tarball for a support ticket."</td><td><code>forensic-baseline.sh</code></td></tr>
+</table>
+
+<h2 id="scripts">Audit and fix scripts</h2>
+
+<p>
+These are the files in <code>scripts/</code>. Each is served directly by
+Pages, so you can download it from this page without cloning. Every
+script is <code>set +e</code>, never calls <code>exit 1</code>, and prints
+a diagnostic rather than a bare failure.
+</p>
+
+<table>
 <tr>
-<td>"What changed on this host between yesterday and today?"</td>
-<td>statedrift diff</td>
+<th>Script</th><th>What it does</th><th>Run</th><th></th>
 </tr>
 <tr>
-<td>"Prove to an auditor that these logs were not altered."</td>
-<td>statedrift verify + export</td>
+<td><code>xfce-wm-diagnose.sh</code></td>
+<td>Read-only. Processes, compositor, RENDER, graphics driver, Alt-Tab binding.</td>
+<td><code>bash scripts/xfce-wm-diagnose.sh</code></td>
+<td><a class="dlbtn" href="scripts/xfce-wm-diagnose.sh" download>Download</a></td>
 </tr>
 <tr>
-<td>"Quick diff of packages/services/users after a config change."</td>
-<td>configsnap</td>
+<td><code>xfce-wm-fix.sh</code></td>
+<td>Idempotent, reversible. Starts the WM if missing, persists compositor off, writes CSD config.</td>
+<td><code>bash scripts/xfce-wm-fix.sh</code></td>
+<td><a class="dlbtn" href="scripts/xfce-wm-fix.sh" download>Download</a></td>
 </tr>
 <tr>
-<td>"Given this snapshot, how do I get back to that state?"</td>
-<td>tibet-snap rollback_plan</td>
+<td><code>monitor.sh</code></td>
+<td>One-shot health snapshot to <code>~/.local/state/xfce-forensics/</code>. Cron-safe.</td>
+<td><code>bash scripts/monitor.sh</code></td>
+<td><a class="dlbtn" href="scripts/monitor.sh" download>Download</a></td>
+</tr>
+<tr>
+<td><code>recover.sh</code></td>
+<td>tibet-snap compare + verify + rollback plan. Does not execute anything.</td>
+<td><code>bash scripts/recover.sh &lt;a&gt; &lt;b&gt;</code></td>
+<td><a class="dlbtn" href="scripts/recover.sh" download>Download</a></td>
+</tr>
+<tr>
+<td><code>configsnap-baseline.sh</code></td>
+<td>One-shot configsnap: <code>pre</code>, <code>post</code>, <code>report</code>. Auto-diffs on post.</td>
+<td><code>sudo bash scripts/configsnap-baseline.sh pre</code></td>
+<td><a class="dlbtn" href="scripts/configsnap-baseline.sh" download>Download</a></td>
+</tr>
+<tr>
+<td><code>tibet-snap-baseline.sh</code></td>
+<td>One-shot sealed snapshot + list + verify + Python rollback plan. Falls back to tibet-wayback.</td>
+<td><code>bash scripts/tibet-snap-baseline.sh baseline-$(date +%s)</code></td>
+<td><a class="dlbtn" href="scripts/tibet-snap-baseline.sh" download>Download</a></td>
+</tr>
+<tr>
+<td><code>forensic-baseline.sh</code></td>
+<td>Runs diagnose + configsnap + tibet-snap into one timestamped <code>.tar.gz</code>.</td>
+<td><code>bash scripts/forensic-baseline.sh</code></td>
+<td><a class="dlbtn" href="scripts/forensic-baseline.sh" download>Download</a></td>
 </tr>
 </table>
 
@@ -556,31 +643,13 @@ compositor backend if you need compositing.
 off and CSD is on. Add <code>GTK_CSD=0</code> to
 <code>~/.config/environment.d/</code> and log in again.
 </li>
+<li>
+<strong>Need evidence for a support ticket.</strong> Run
+<code>bash scripts/forensic-baseline.sh</code>; it produces a single
+<code>.tar.gz</code> with diagnostics, configsnap output, and a sealed
+tibet snapshot listing.
+</li>
 </ol>
-
-<h2>Files in this repo</h2>
-
-<ul>
-<li>
-<a href="scripts/xfce-wm-diagnose.sh">xfce-wm-diagnose.sh</a> — read-only.
-Prints process state, compositor setting, X11 extensions, graphics driver,
-Alt-Tab binding.
-</li>
-<li>
-<a href="scripts/xfce-wm-fix.sh">xfce-wm-fix.sh</a> — idempotent and
-reversible. Starts the WM if missing, persists
-<code>use_compositing=false</code>, writes the CSD config.
-</li>
-<li>
-<a href="scripts/monitor.sh">monitor.sh</a> — safe to run from cron. Logs
-WM presence, compositor state, RENDER presence, and any statedrift or
-configsnap diff to <code>~/.local/state/xfce-forensics/</code>.
-</li>
-<li>
-<a href="scripts/recover.sh">recover.sh</a> — prints snapshot comparison
-and rollback plan. Does not execute anything.
-</li>
-</ul>
 
 <h2>References</h2>
 
@@ -598,6 +667,18 @@ when RENDER is missing" behaviour lives.
 <code>~/.config/environment.d/</code>.
 </li>
 <li>
+<a href="https://man.sourcentral.org/f40/1+configsnap">configsnap(1) man page</a> — options, phases, and the
+<code>additional.conf</code> format.
+</li>
+<li>
+<a href="https://github.com/rackerlabs/configsnap">configsnap upstream</a> — source and examples.
+</li>
+<li>
+<a href="https://pypi.org/project/tibet-snap/">tibet-snap on PyPI</a> —
+CLI, Python API, and the deprecation notice pointing at
+<code>tibet-wayback</code>.
+</li>
+<li>
 <a href="https://docs.github.com/en/rest/pages/pages">GitHub Pages API</a>
 — the endpoints behind this site's deployment.
 </li>
@@ -613,10 +694,6 @@ community discussion 144171</a> — the two-step
 </li>
 <li><a href="https://github.com/statedrift/statedrift">statedrift</a> — host
 state snapshots with hash chaining.</li>
-<li>
-<a href="https://packages.fedoraproject.org/pkgs/configsnap/configsnap/">configsnap</a> — Fedora package page.
-</li>
-<li><a href="https://pypi.org/project/tibet-snap/">tibet-snap</a> — PyPI page.</li>
 </ul>
 
 <p class="muted">
@@ -626,4 +703,71 @@ this page can be reproduced from a clean Fedora 43 XFCE install. No
 secrets, hostnames, or IP addresses are included.
 </p>
 
-</main></body></html>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // 1. Derive the repo .zip URL from the Pages hostname/path.
+  var zip = document.getElementById("dl-zip");
+  if (zip) {
+    var host = location.hostname || "";
+    var seg = (location.pathname || "/").split("/");
+    var user = host.indexOf("github.io") !== -1 ? host.split(".")[0] : "swipswaps";
+    var repo = seg.length > 1 && seg[1] ? seg[1] : "xfce-wm-forensic-recovery";
+    zip.href = "https://github.com/" + user + "/" + repo + "/archive/refs/heads/main.zip";
+  }
+
+  // 2. Wrap every <pre> with a Copy button (clipboard API, execCommand fallback).
+  function copyFallback(text, done) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    done(ok);
+  }
+
+  var pres = document.querySelectorAll("pre");
+  for (var i = 0; i < pres.length; i++) {
+    (function (pre) {
+      var wrap = document.createElement("div");
+      wrap.className = "codeblock";
+      var bar = document.createElement("div");
+      bar.className = "codebar";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copybtn";
+      btn.textContent = "Copy";
+
+      btn.addEventListener("click", function () {
+        var text = pre.innerText;
+        var finish = function (ok) {
+          btn.textContent = ok ? "Copied" : "Copy failed";
+          setTimeout(function () { btn.textContent = "Copy"; }, 1400);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(
+            function () { finish(true); },
+            function () { copyFallback(text, finish); }
+          );
+        } else {
+          copyFallback(text, finish);
+        }
+      });
+
+      bar.appendChild(btn);
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(bar);
+      wrap.appendChild(pre);
+    })(pres[i]);
+  }
+})();
+</script>
+</body></html>

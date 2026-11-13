@@ -18,27 +18,30 @@ before its logging subsystem opens — so no log appears in `journalctl`,
 Persist `GTK_CSD=0` in `~/.config/environment.d/10-gtk-csd.conf` as plain
 `KEY=VALUE` — `environment.d` does not accept `export`.
 
+## Scripts (also served at /scripts/<name>.sh)
+
+| Script | Purpose |
+|---|---|
+| `xfce-wm-diagnose.sh` | read-only diagnostics |
+| `xfce-wm-fix.sh` | reversible fix |
+| `monitor.sh` | one-shot health snapshot |
+| `recover.sh` | tibet-snap compare + rollback plan |
+| `configsnap-baseline.sh` | one-shot configsnap pre/post/report |
+| `tibet-snap-baseline.sh` | one-shot sealed snapshot + verify + rollback plan |
+| `forensic-baseline.sh` | runs all of the above into one `.tar.gz` bundle |
+
 ## Forensic stack
 
 - statedrift — tamper-evident host snapshots, diff, evidence export
-- configsnap — Fedora-native state record/compare
-- tibet-snap — cryptographic snapshots, Python rollback-plan API
+- configsnap — Fedora-native state record/compare (phases with `post` diff automatically)
+- tibet-snap / tibet-wayback — cryptographic snapshots, Python rollback-plan API
 - timeshift — optional full-system restore
-
-## Pages build_type=legacy
-
-Branch-based Pages: GitHub serves what is pushed to `main` at `/`, with
-`.nojekyll` preventing Jekyll. The API requires a two-step enable on some
-repos (POST workflow, then PUT legacy) to avoid a documented 422.
 
 ## References
 
 - xfwm4 upstream: <https://gitlab.xfce.org/xfce/xfwm4>
 - environment.d(5): <https://man7.org/linux/man-pages/man5/environment.d.5.html>
+- configsnap man page: <https://man.sourcentral.org/f40/1+configsnap>
+- tibet-snap on PyPI: <https://pypi.org/project/tibet-snap/>
 - GitHub Pages API: <https://docs.github.com/en/rest/pages/pages>
-- Pages publish source: <https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site>
 - gh api nested fields: <https://cli.github.com/manual/gh_api>
-- two-step workaround: <https://github.com/orgs/community/discussions/144171>
-- statedrift: <https://github.com/statedrift/statedrift>
-- configsnap: <https://packages.fedoraproject.org/pkgs/configsnap/configsnap/>
-- tibet-snap: <https://pypi.org/project/tibet-snap/>
