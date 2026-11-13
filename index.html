@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XFCE WM — Silent Failure &amp; Forensic Recovery</title>
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--card:#161b22;--border:#30363d;--warn:#d29922;--ok:#3fb950}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:900px;margin:0 auto;padding:2rem 1.25rem 4rem}
+h1{font-size:2rem;line-height:1.2;margin:0 0 .25rem}
+h2{margin-top:2.5rem;border-bottom:1px solid var(--border);padding-bottom:.35rem}
+h3{margin-top:1.5rem;color:var(--accent)}
+a{color:var(--accent)}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow:auto}
+code{background:var(--card);padding:.12em .35em;border-radius:4px}
+pre code{background:none;padding:0}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin:1rem 0}
+.ok{color:var(--ok)}.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;margin:1rem 0}
+th,td{text-align:left;padding:.5rem .65rem;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+</style></head><body><main>
+
+<h1>XFCE Window Manager: Silent Failure &amp; Forensic Recovery</h1>
+<p class="muted">Fedora 43 · XFCE 4.20 · xfwm4 · Intel Ivy Bridge · X11</p>
+
+<div class="card"><strong>No secrets.</strong> No hostnames, IPs, or credentials.</div>
+
+<h2>How we got here</h2>
+<h3>1. Symptoms</h3>
+<ul><li>Lost window decorations.</li><li>Alt-Tab failed on all programs.</li>
+<li>Black border around the Applications dropdown.</li><li>Firefox min/max buttons failed.</li></ul>
+
+<h3>2. Diagnostics (RENDER, not XRender)</h3>
+<pre><code>pgrep -x xfwm4
+pgrep -x xfce4-session
+xdpyinfo | grep -i render</code></pre>
+
+<h3>3. Root cause</h3>
+<p><code>xfwm4</code> 4.20 aborts before opening its logging subsystem when
+<code>RENDER</code> is missing. That is why <code>journalctl</code> and
+<code>~/.xsession-errors</code> are silent.</p>
+
+<h3>4. Fix</h3>
+<pre><code>setsid nohup xfwm4 --compositor=off &gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;
+xfconf-query -c xfwm4 -p /general/use_compositing -s false
+export GTK_CSD=0</code></pre>
+
+<h2>Where we are</h2>
+<table>
+<tr><th>Check</th><th>Result</th></tr>
+<tr><td>xfwm4 PID</td><td class="ok">present</td></tr>
+<tr><td>use_compositing</td><td class="ok">false</td></tr>
+<tr><td>GTK_CSD</td><td class="ok">0</td></tr>
+<tr><td>Decorations / Alt-Tab</td><td class="ok">working</td></tr>
+<tr><td>Applications menu</td><td class="ok">no black edge</td></tr>
+<tr><td>RENDER on X server</td><td class="warn">absent — compositor stays off</td></tr>
+</table>
+
+<h2>Verbatim Pages telemetry</h2>
+<pre><code>gh api repos/$OWNER/$REPO_NAME/pages
+gh api repos/$OWNER/$REPO_NAME/pages/builds/latest \
+  --jq '[.status // "null", .error.message // "none", .commit // "none", .created_at // "none", .duration // "none"] | @tsv'
+gh run list --repo $OWNER/$REPO_NAME --workflow=pages-build-deployment --limit 5</code></pre>
+
+<h2>Scripts</h2>
+<ul>
+<li><a href="scripts/xfce-wm-diagnose.sh">xfce-wm-diagnose.sh</a> — read-only.</li>
+<li><a href="scripts/xfce-wm-fix.sh">xfce-wm-fix.sh</a> — reversible fix.</li>
+<li><a href="scripts/monitor.sh">monitor.sh</a> — snapshot + drift.</li>
+<li><a href="scripts/recover.sh">recover.sh</a> — compare/verify + rollback plan.</li>
+</ul>
+
+<h2>Why not <code>xfwm4 --replace --compositor=on</code>?</h2>
+<p>It kills the working WM first. Without <code>RENDER</code> the replacement fails and you are left with no WM.</p>
+
+<h2>References</h2>
+<ul>
+<li><a href="https://gitlab.xfce.org/xfce/xfwm4">xfwm4 upstream</a></li>
+<li><a href="https://man7.org/linux/man-pages/man5/environment.d.5.html">environment.d(5)</a></li>
+<li><a href="https://docs.github.com/en/rest/pages/pages">GitHub Pages API</a></li>
+<li><a href="https://github.com/statedrift/statedrift">statedrift</a></li>
+<li><a href="https://packages.fedoraproject.org/pkgs/configsnap/configsnap/">configsnap (Fedora)</a></li>
+<li><a href="https://pypi.org/project/tibet-snap/">tibet-snap (PyPI)</a></li>
+</ul>
+
+</main></body></html>
