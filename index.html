@@ -68,8 +68,7 @@ legacy) to avoid a documented 422.</p>
 
 <h2>Verbatim Pages telemetry</h2>
 <pre><code>gh api repos/$OWNER/$REPO_NAME/pages
-gh api repos/$OWNER/$REPO_NAME/pages/builds/latest \
-  --jq '[.status // "null", .error.message // "none", .commit // "none", .created_at // "none", .duration // "none"] | @tsv'
+gh api repos/$OWNER/$REPO_NAME/pages/builds/latest --jq '.status // "null"'
 gh run list --repo $OWNER/$REPO_NAME --workflow=pages-build-deployment --limit 5</code></pre>
 
 <h2>Scripts</h2>
