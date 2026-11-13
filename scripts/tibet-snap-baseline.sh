@@ -5,9 +5,6 @@
 # Env overrides:
 #   TIBET_STORE  default: ~/.local/state/tibet-snap
 #   TIBET_PATHS  default: "/etc/X11 /etc/xdg /etc/systemd /etc/fonts"
-#
-# Probes tibet-snap then tibet-wayback (upstream deprecates tibet-snap in
-# favour of tibet-wayback).
 set +e
 
 NAME="${1:-baseline-$(date +%Y%m%d-%H%M%S)}"
@@ -34,14 +31,11 @@ mkdir -p "$STORE" || { echo "cannot create $STORE"; exit 0; }
 echo "tool=$TOOL store=$STORE name=$NAME"
 echo "paths: $PATHS"
 
-# Run inside the store so the default on-disk layout stays self-contained.
-# shellcheck disable=SC2086
 ( cd "$STORE" && "$TOOL" create "$NAME" $PATHS )
 
 echo "--- list ---"
 ( cd "$STORE" && "$TOOL" list )
 
-# Verify the newest id if the CLI can list it in a parseable way.
 NEWEST=$( ( cd "$STORE" && "$TOOL" list ) 2>&1 | awk 'NF{id=$1} END{print id}' )
 if [ -n "$NEWEST" ]; then
   echo "--- verify $NEWEST ---"

@@ -40,6 +40,27 @@ ol li, ul li{margin:.35rem 0}
 .dlbtn{background:var(--card);border:1px solid var(--border);border-radius:6px;
        padding:.25rem .65rem;font:inherit;font-size:.8em;color:var(--muted);text-decoration:none}
 .dlbtn:hover{color:var(--accent);border-color:var(--accent)}
+
+/* preview + modal */
+.previewbtn{background:var(--card);border:1px solid var(--border);border-radius:6px;
+  padding:.25rem .65rem;font:inherit;font-size:.8em;color:var(--muted);cursor:pointer;margin-right:.4rem}
+.previewbtn:hover{color:var(--accent);border-color:var(--accent)}
+td.actions{white-space:nowrap}
+
+.modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal[hidden]{display:none}
+.modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.68)}
+.modal-body{position:relative;background:var(--card);border:1px solid var(--border);border-radius:10px;
+  width:min(920px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+  padding:.7rem 1rem;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.modal-title{font-weight:600;color:var(--accent);font-family:ui-monospace,monospace;
+  font-size:.92em;word-break:break-all;flex:1 1 auto}
+.modal-actions{display:flex;gap:.4rem;flex-shrink:0}
+.closebtn{background:var(--card);border:1px solid var(--border);border-radius:6px;
+  padding:.25rem .7rem;font:inherit;font-size:1.1em;line-height:1;color:var(--muted);cursor:pointer}
+.closebtn:hover{color:var(--accent);border-color:var(--accent)}
+#modal-pre{flex:1;overflow:auto;border:none;border-radius:0 0 10px 10px;min-height:0}
 </style></head><body><main>
 
 <div class="toolbar">
@@ -54,9 +75,7 @@ ol li, ul li{margin:.35rem 0}
 This page explains <strong>why</strong> an XFCE desktop suddenly lost all window
 decorations, Alt-Tab, and window controls, <strong>how</strong> we diagnosed the
 cause, and <strong>how</strong> we fixed it in a way that survives reboots. No
-prior knowledge of X11, window managers, or compositors is assumed. Every term
-is defined the first time it appears, and every command is shown with the
-exact output to expect in both the broken and healthy states.
+prior knowledge of X11, window managers, or compositors is assumed.
 </p>
 
 <h2>The short answer</h2>
@@ -70,217 +89,58 @@ advertising an optional feature called <strong>RENDER</strong> that
 With no window manager, there were no decorations and no Alt-Tab.
 </p>
 <p>
-The fix is to tell <code>xfwm4</code> <em>not</em> to start the compositor.
-That skips the code path that requires RENDER, so <code>xfwm4</code> stays
-running. Because there is now no compositor to blend transparency, GTK
-applications that draw their own decorations (CSD) show a black border where
-their shadow would be. Setting <code>GTK_CSD=0</code> tells them to let the
-window manager draw plain borders instead.
+The fix is to tell <code>xfwm4</code> <em>not</em> to start the compositor,
+and to tell GTK applications to let the WM draw their decorations
+(<code>GTK_CSD=0</code>) so the black border stops appearing.
 </p>
 </div>
 
 <h2>Glossary</h2>
-<p>Every technical term used on this page, defined once. Skim now, return later.</p>
-
 <dl class="glossary">
-
 <dt>Window manager (WM)</dt>
-<dd>
-<p>
-The program that draws the title bar, borders, and buttons around every
-window, and handles window-level keyboard shortcuts such as Alt-Tab.
-Without a WM running, applications still draw their own content, but no
-frame surrounds the window: it cannot be moved with the mouse, resized, or
-minimised from a title bar, and Alt-Tab does nothing.
-</p>
-<p>On XFCE, the window manager is <code>xfwm4</code>, a single process.</p>
-</dd>
+<dd><p>The program that draws title bars, borders, and buttons, and handles Alt-Tab. Without it, applications draw content but nothing frames them. On XFCE the WM is <code>xfwm4</code>.</p></dd>
 
-<dt>X11 / Xorg (the display server)</dt>
-<dd>
-<p>
-The program that owns the screen, keyboard, and mouse, and mediates
-between applications and hardware. Every graphical action goes through
-it. Xorg is the classic X11 server; Xwayland is a compatibility layer
-under Wayland. If you see <code>DISPLAY=:0.0</code> in your environment,
-you are on X11.
-</p>
-</dd>
-
-<dt>XFCE</dt>
-<dd>
-<p>
-A lightweight desktop environment that provides the panel, the
-Applications menu, settings dialogs, and its default window manager
-<code>xfwm4</code>.
-</p>
-</dd>
+<dt>X11 / Xorg (display server)</dt>
+<dd><p>Owns the screen, keyboard, and mouse. Xorg is the classic server; Xwayland is the Wayland compatibility layer. <code>DISPLAY=:0.0</code> means X11.</p></dd>
 
 <dt>Compositor</dt>
-<dd>
-<p>
-An optional layer that combines every window's pixels into a single
-final image before the screen shows it. Compositors enable
-<strong>transparency</strong>, <strong>drop shadows</strong>,
-<strong>smooth animations</strong>, and the shadows around GTK's
-client-side decorations.
-</p>
-<p>
-Without a compositor, every application draws directly to the screen in
-whatever order it happens to draw, and pixels that were meant to be
-semi-transparent are instead painted solid.
-</p>
-</dd>
+<dd><p>Optional layer that blends every window's pixels into one image. It enables transparency, shadows, and smooth animations. Without it, semi-transparent pixels paint solid.</p></dd>
 
 <dt>RENDER / XRender</dt>
-<dd>
-<p>
-An <strong>X11 extension</strong> — an optional feature the display server
-offers to applications. RENDER provides alpha blending and Porter-Duff
-composition, which the compositor needs.
-</p>
-<p>
-If the display server does not advertise RENDER, the compositor cannot
-function. The X11 extension is named <code>RENDER</code> (all caps). The
-client library that talks to it is named <code>libXrender</code> (one
-word). Confusing the two is a common trap: <code>ldconfig -p | grep -i
-xrender</code> shows the <em>library</em> is installed even when the
-server does not offer the <em>extension</em>.
-</p>
-</dd>
+<dd><p>An X11 <em>extension</em> (all caps <code>RENDER</code>) providing alpha blending. The <em>library</em> that talks to it is <code>libXrender</code>. A machine can have the library installed while the server does not offer the extension — that is exactly this case.</p></dd>
 
 <dt>xfconf-query</dt>
-<dd>
-<p>
-Command-line tool for reading and writing XFCE's per-user settings
-database. For example,
-<code>xfconf-query -c xfwm4 -p /general/use_compositing</code> reads
-whether the window manager's compositor is enabled.
-</p>
-</dd>
+<dd><p>Reads and writes XFCE's per-user settings database. <code>xfconf-query -c xfwm4 -p /general/use_compositing</code> reads the compositor setting.</p></dd>
 
 <dt>CSD / SSD</dt>
-<dd>
-<p>
-<strong>Client-Side Decoration</strong> — the application draws its own
-title bar and border. This is what modern GTK applications do, and it
-relies on the compositor to render rounded corners and drop shadows
-correctly.
-</p>
-<p>
-<strong>Server-Side Decoration</strong> — the window manager draws the
-title bar and border on the application's behalf. This is the classic
-X11 model, and it does not need a compositor.
-</p>
-<p>See the diagrams further down for the visual difference.</p>
-</dd>
+<dd><p><strong>CSD</strong>: the application draws its own title bar (modern GTK default, needs a compositor for shadows). <strong>SSD</strong>: the window manager draws it (classic X11, no compositor needed).</p></dd>
 
 <dt>environment.d</dt>
-<dd>
-<p>
-A directory (<code>~/.config/environment.d/</code>) where files named
-<code>*.conf</code> set environment variables for every program in your
-graphical session. Read at login by <code>systemd --user</code>.
-</p>
-<p>
-Each line is a plain <code>NAME=value</code>. There is no
-<code>export</code> keyword and no shell syntax.
-</p>
-</dd>
+<dd><p><code>~/.config/environment.d/*.conf</code> sets session environment variables. Plain <code>NAME=value</code> per line, no <code>export</code>. Read at login by <code>systemd --user</code>.</p></dd>
 
 <dt>GTK</dt>
-<dd>
-<p>
-The graphical toolkit used by most XFCE applications (Thunar, Mousepad,
-the panel's menus) and by Firefox. Version 3 and later default to CSD,
-which is why the black border appears when there is no compositor.
-</p>
-</dd>
-
+<dd><p>The toolkit behind Thunar, Mousepad, the panel, and Firefox. GTK3+ defaults to CSD, which is why the black border appears without a compositor.</p></dd>
 </dl>
 
 <h2>What the user observed, and what each symptom meant</h2>
-
 <table>
 <tr><th>Symptom</th><th>Diagnosis</th></tr>
-<tr>
-<td>Every window lost its title bar, border, and close button</td>
-<td>
-The window manager is not running. Applications still draw their own
-content, but nothing is drawing the frame around them.
-</td>
-</tr>
-<tr>
-<td>Alt-Tab does nothing</td>
-<td>
-Alt-Tab is not a desktop feature; it is a keyboard shortcut handled by
-the window manager. No WM, no Alt-Tab.
-</td>
-</tr>
-<tr>
-<td>Firefox minimise/maximise buttons stopped working</td>
-<td>
-Firefox asks the window manager to do those actions. With no WM the
-request has nowhere to go.
-</td>
-</tr>
-<tr>
-<td>A thick black border appeared around the Applications menu</td>
-<td>
-This is <em>not</em> caused by the missing WM. It appears once the WM is
-back but the compositor is off: GTK is drawing a CSD shadow whose
-transparency is not being blended, so the "transparent" pixels render
-black. The fix for this is separate from the fix for the missing WM.
-</td>
-</tr>
+<tr><td>Every window lost its title bar, border, and close button</td><td>The window manager is not running.</td></tr>
+<tr><td>Alt-Tab does nothing</td><td>Alt-Tab is a WM shortcut. No WM, no Alt-Tab.</td></tr>
+<tr><td>Firefox minimise/maximise stopped working</td><td>Those buttons ask the WM. With no WM, nothing happens.</td></tr>
+<tr><td>A thick black border appeared around the Applications menu</td><td>Once the WM is back without a compositor: GTK's CSD shadow is painted as solid black. Fixed separately by <code>GTK_CSD=0</code>.</td></tr>
 </table>
 
 <h2>Diagnostics you can run</h2>
-
-<p>
-Each command below is read-only. Run it in a terminal. The <em>broken</em>
-and <em>healthy</em> columns tell you exactly what each line prints in the
-two states.
-</p>
-
 <table>
-<tr>
-<th>Command</th>
-<th>Broken output</th>
-<th>Healthy output</th>
-<th>What it tells you</th>
-</tr>
-<tr>
-<td><code>pgrep -x xfwm4</code></td>
-<td>nothing; exit code 1</td>
-<td>a PID, e.g. <code>139923</code></td>
-<td>Whether the window manager is running.</td>
-</tr>
-<tr>
-<td><code>pgrep -x xfce4-session</code></td>
-<td>a PID (session manager is fine)</td>
-<td>a PID</td>
-<td>Whether the session manager is alive. If it is and
-<code>xfwm4</code> is not, then <code>xfwm4</code> failed to
-<em>stay</em> running, not failed to be launched.</td>
-</tr>
-<tr>
-<td><code>xdpyinfo | grep -i render</code></td>
-<td>nothing</td>
-<td><code>RENDER</code></td>
-<td>The root-cause question: does the X server advertise RENDER?</td>
-</tr>
-<tr>
-<td><code>xfconf-query -c xfwm4 -p /general/use_compositing</code></td>
-<td><code>true</code></td>
-<td><code>false</code></td>
-<td>Whether the WM is configured to start its compositor (which
-requires RENDER).</td>
-</tr>
+<tr><th>Command</th><th>Broken</th><th>Healthy</th><th>What it tells you</th></tr>
+<tr><td><code>pgrep -x xfwm4</code></td><td>nothing</td><td>a PID</td><td>WM running?</td></tr>
+<tr><td><code>pgrep -x xfce4-session</code></td><td>a PID</td><td>a PID</td><td>Session manager alive. Session up + WM down ⇒ WM failed to stay, not failed to launch.</td></tr>
+<tr><td><code>xdpyinfo | grep -i render</code></td><td>nothing</td><td><code>RENDER</code></td><td>Root-cause question.</td></tr>
+<tr><td><code>xfconf-query -c xfwm4 -p /general/use_compositing</code></td><td><code>true</code></td><td><code>false</code></td><td>Is the WM configured to enable the compositor?</td></tr>
 </table>
 
-<p>Example of a broken state, run together:</p>
-
+<p>Example broken state:</p>
 <pre><code>$ pgrep -x xfwm4
 $ pgrep -x xfce4-session
 4214
@@ -288,241 +148,64 @@ $ xdpyinfo | grep -i render
 $ xfconf-query -c xfwm4 -p /general/use_compositing
 true</code></pre>
 
-<p>
-Reading this: the WM is not running, the session manager is, RENDER is
-absent, and the compositor is enabled. That combination is the exact
-failure. The WM tried to honour <code>use_compositing=true</code>, asked
-X11 for RENDER, was refused, and exited silently.
-</p>
-
 <h2>The fix, line by line</h2>
-
-<h3>1. Start the window manager with the compositor disabled</h3>
-
+<h3>1. Start the WM with the compositor disabled</h3>
 <pre><code>setsid nohup xfwm4 --compositor=off &gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code></pre>
-
-<p>Four pieces of this command each guard against a different failure:</p>
-
 <ul>
-<li><code>setsid</code> — run in a new session with no controlling terminal.
-Without this, the WM dies the moment you close the terminal.</li>
-<li><code>nohup</code> — ignore the SIGHUP signal that logout sends.
-Belt-and-braces with <code>setsid</code>.</li>
-<li><code>--compositor=off</code> — do not attempt to enable the compositor.
-This is the crucial flag: it skips the code path that needs RENDER, so
-the WM starts and stays running.</li>
-<li><code>&gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code> — send stdout
-and stderr to a log, detach stdin, and run in the background so your
-shell prompt returns immediately.</li>
+<li><code>setsid</code> — new session, no controlling terminal; the WM survives terminal close.</li>
+<li><code>nohup</code> — ignore SIGHUP on logout.</li>
+<li><code>--compositor=off</code> — skip the code path that needs RENDER.</li>
+<li><code>&gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code> — log both streams, detach stdin, background.</li>
 </ul>
 
-<p>
-After this line, <code>pgrep -x xfwm4</code> prints a PID, and all window
-decorations and Alt-Tab work immediately.
-</p>
-
 <h3>2. Make the setting survive logout</h3>
-
 <pre><code>xfconf-query -c xfwm4 -p /general/use_compositing -s false</code></pre>
+<p>Persisted in XFCE's user settings DB; the next login reads it and starts <code>xfwm4</code> without the compositor.</p>
 
-<p>
-This writes <code>false</code> to XFCE's per-user settings database. The
-next time the session manager starts <code>xfwm4</code> at login, it reads
-this value and skips the compositor without any manual command.
-<strong>This is what makes the fix survive reboots.</strong>
-</p>
-
-<p>Verify with:</p>
-
-<pre><code>$ xfconf-query -c xfwm4 -p /general/use_compositing
-false</code></pre>
-
-<h3>3. Disable GTK client-side decorations (fixes the black border)</h3>
-
+<h3>3. Disable CSD (fixes the black border)</h3>
 <pre><code>export GTK_CSD=0</code></pre>
 
-<p>
-This line, on its own, does nothing to fix the missing WM. It removes the
-black border that otherwise appears once the WM is back without a
-compositor. The next section explains why.
-</p>
-
-<h3>4. Persist <code>GTK_CSD</code> across sessions</h3>
-
+<h3>4. Persist across sessions</h3>
 <pre><code>mkdir -p ~/.config/environment.d
 printf 'GTK_CSD=0\n' &gt; ~/.config/environment.d/10-gtk-csd.conf</code></pre>
 
-<p>
-<code>environment.d</code> files are plain <code>NAME=value</code>, one
-per line. No <code>export</code>, no quotes, no shell syntax. Read at
-login by <code>systemd --user</code>, which passes them to every
-graphical program:
-</p>
-
-<pre><code>$ cat ~/.config/environment.d/10-gtk-csd.conf
-GTK_CSD=0</code></pre>
-
-<p>
-Adding the same line to <code>~/.bashrc</code> is a second safeguard for
-programs you launch from a terminal.
-</p>
-
 <h2>Why disabling the compositor removes the black border</h2>
-
-<p>
-The black border is not caused by the fix; it is caused by the absence of
-a compositor that the fix leaves in place. Here is the mechanism, with
-diagrams.
-</p>
-
-<h3>With CSD (client-side decoration, the modern GTK default)</h3>
-
-<pre><code>┌──────────────────────────┐  &lt;- app draws this border
-│  ●  ●  ●     Firefox     │  &lt;- app draws these buttons
-├──────────────────────────┤
-│                          │
-│      app content         │
-│                          │
-└──────────────────────────┘  &lt;- app draws this border</code></pre>
-
-<p>
-The application draws its own title bar and border, and adds a soft drop
-shadow around the edges for a modern look. The shadow is
-<strong>semi-transparent black</strong>. To render it correctly, the app
-relies on the compositor to blend those semi-transparent pixels with
-whatever is underneath.
-</p>
-
-<h3>Without a compositor</h3>
-
-<p>
-No compositor means nothing blends the transparency. X11 paints every
-pixel directly to the screen. The "semi-transparent black" shadow region
-becomes <strong>solid black</strong>. On a menu, this appears as a thick
-black border.
-</p>
-
-<h3>With <code>GTK_CSD=0</code></h3>
-
-<pre><code>┌──────────────────────────┐  &lt;- WM draws this
-│         Firefox          │  &lt;- WM draws this
-├──────────────────────────┤
-│                          │
-│      app content         │
-│                          │
-└──────────────────────────┘  &lt;- WM draws this</code></pre>
-
-<p>
-The application stops drawing its own border. The window manager draws a
-plain title bar using the WM theme. No transparency, no shadow, no black
-pixels. This is the classic SSD model.
-</p>
-
-<p>
-That is why the fix is two-part: <strong>disable the compositor</strong>
-(so <code>xfwm4</code> can start at all), and <strong>disable CSD</strong>
-(so menus and CSD windows still look correct without a compositor).
-</p>
+<p>With CSD the application draws its own title bar plus a semi-transparent shadow. Without a compositor nothing blends the transparency, so the shadow paints solid black. Setting <code>GTK_CSD=0</code> tells the application to stop drawing decorations; the WM draws plain ones instead.</p>
 
 <h2>Before and after</h2>
-
 <table>
 <tr><th></th><th>Before fix</th><th>After fix</th></tr>
 <tr><td><code>pgrep -x xfwm4</code></td><td>no PID</td><td>PID present</td></tr>
 <tr><td>Window decorations</td><td>none</td><td>WM-drawn title bars</td></tr>
-<tr><td>Alt-Tab</td><td>nothing</td><td>window switcher appears</td></tr>
+<tr><td>Alt-Tab</td><td>nothing</td><td>window switcher</td></tr>
 <tr><td>Min/Max buttons</td><td>do nothing</td><td>work</td></tr>
 <tr><td><code>use_compositing</code></td><td><code>true</code> (WM dies)</td><td><code>false</code> (persisted)</td></tr>
-<tr><td>Applications menu</td><td>black border appears</td><td>no black border, thanks to <code>GTK_CSD=0</code></td></tr>
-<tr><td>RENDER on X server</td><td>absent (root cause)</td><td>still absent (unfixed; compositor must stay off)</td></tr>
+<tr><td>Applications menu</td><td>black border</td><td>no black border</td></tr>
+<tr><td>RENDER on X server</td><td>absent (root cause)</td><td>still absent — compositor stays off</td></tr>
 </table>
-
-<p>
-<strong>Outstanding item:</strong> RENDER is still absent on the X server.
-That is the deeper issue, and the fix sidesteps it rather than solving it.
-Restoring RENDER on the X server is a separate project involving Xorg
-configuration and the graphics driver; until that is done, the compositor
-must stay off.
-</p>
 
 <h2>Forensic monitoring</h2>
 
-<p>
-The failure was invisible because <code>xfwm4</code> exited before its
-logging subsystem opened. Nothing was written to <code>journalctl</code>,
-<code>~/.xsession-errors</code>, or <code>XFWM4_LOG_FILE</code>. A future
-regression would be equally silent. These tools close that gap.
-</p>
-
 <h3>statedrift — tamper-evident snapshots</h3>
-
-<p>
-statedrift records the state of the whole host (packages, services, users,
-network, files) as SHA-256 hash-chained snapshots. Each snapshot commits
-to its predecessor, so a retroactive edit to an old snapshot is detectable.
-</p>
-
 <pre><code>sudo statedrift init
 sudo statedrift snap
 statedrift diff HEAD~1 HEAD</code></pre>
 
-<p>
-<code>statedrift verify</code> reports whether the chain is intact.
-<code>statedrift export</code> produces a redacted evidence bundle for an
-external auditor or a support ticket.
-</p>
-
 <h3>configsnap — Fedora-native baseline</h3>
-
-<p>
-configsnap is packaged in Fedora's own repositories. It records "important
-system state" — packages, services, kernel modules, user accounts, network
-interfaces — and, when the phase name contains <code>post</code> or
-<code>rollback</code>, automatically diffs against the stored
-<code>pre</code> snapshot[reference:5].
-</p>
-
 <pre><code>sudo dnf install -y configsnap
 sudo configsnap -t mychange -p pre  -d /var/log/configsnap -v
-# ... change something ...
+# ... change ...
 sudo configsnap -t mychange -p post -d /var/log/configsnap -v
-# re-diff without recollecting:
 sudo configsnap -C --pre=pre -p post -t mychange -d /var/log/configsnap -v</code></pre>
+<p>Phases with <code>post</code> or <code>rollback</code> diff automatically. <code>-C</code> re‑diffs existing files without recollecting.</p>
 
-<p>
-The one-shot wrapper in this repo collapses that into three subcommands:
-</p>
-
-<pre><code>sudo scripts/configsnap-baseline.sh pre
-sudo scripts/configsnap-baseline.sh post
-sudo scripts/configsnap-baseline.sh report &lt;tag&gt;</code></pre>
-
-<p>
-It writes under <code>/var/log/configsnap/&lt;tag&gt;/</code>, passes
-<code>-v</code> so progress is visible, and refuses to run without root
-because configsnap collects data as root.
-</p>
-
-<h3>tibet-snap — cryptographic snapshots and rollback plans</h3>
-
-<p>
-tibet-snap creates TIBET-sealed snapshots (paths, SHA-256 hashes,
-timestamps, sizes, permissions) and chains every operation into a
-tamper-evident audit trail. Its distinguishing feature is
-<strong>rollback plan generation</strong>: given a snapshot, it produces a
-concrete list of restore/remove/revert actions[reference:7].
-</p>
-
+<h3>tibet-snap — cryptographic snapshots + rollback plans</h3>
 <pre><code>python3 -m pip install --user tibet-snap
 tibet-snap create baseline /etc/X11 /etc/systemd /etc/xdg
 tibet-snap list
 tibet-snap verify &lt;id&gt;
 tibet-snap compare &lt;id_a&gt; &lt;id_b&gt;</code></pre>
-
-<p>
-Rollback plans are exposed through the Python API, not the CLI:
-</p>
-
+<p>Rollback plans are exposed via the Python API, not the CLI:</p>
 <pre><code>python3 - &lt;&lt;'PY'
 from tibet_snap import SnapEngine
 engine = SnapEngine(store_dir=".tibet-snap")
@@ -531,185 +214,121 @@ for action in engine.rollback_plan(snap.id):
     print(action["action"], action["path"])
 PY</code></pre>
 
-<p>
-The one-shot wrapper in this repo does create → list → verify → rollback
-plan in a single invocation:
-</p>
-
-<pre><code>scripts/tibet-snap-baseline.sh baseline-$(date +%Y%m%d-%H%M%S)</code></pre>
-
-<p>
-It probes for <code>tibet-snap</code> and falls back to
-<code>tibet-wayback</code>, since upstream marks tibet-snap deprecated in
-favour of that successor[reference:8]. The store lives at
-<code>~/.local/state/tibet-snap</code> by default; override with
-<code>TIBET_STORE=…</code>.
-</p>
-
 <h3>Which tool when</h3>
-
 <table>
 <tr><th>Question</th><th>Tool / script</th></tr>
-<tr><td>"What changed on this host between yesterday and today?"</td><td>statedrift diff</td></tr>
-<tr><td>"Prove to an auditor that these logs were not altered."</td><td>statedrift verify + export</td></tr>
-<tr><td>"Quick diff of packages/services/users after a config change."</td><td><code>configsnap-baseline.sh pre</code> → change → <code>… post</code></td></tr>
-<tr><td>"Given this snapshot, how do I get back to that state?"</td><td><code>tibet-snap-baseline.sh</code> / <code>recover.sh</code></td></tr>
-<tr><td>"Give me everything in one tarball for a support ticket."</td><td><code>forensic-baseline.sh</code></td></tr>
+<tr><td>"What changed on this host?"</td><td>statedrift diff</td></tr>
+<tr><td>"Prove logs were not altered."</td><td>statedrift verify + export</td></tr>
+<tr><td>"Quick diff of packages/services/users."</td><td><code>configsnap-baseline.sh pre</code> → change → <code>… post</code></td></tr>
+<tr><td>"Rollback plan from this snapshot."</td><td><code>tibet-snap-baseline.sh</code></td></tr>
+<tr><td>"One tarball for a support ticket."</td><td><code>forensic-baseline.sh</code></td></tr>
 </table>
 
 <h2 id="scripts">Audit and fix scripts</h2>
-
 <p>
-These are the files in <code>scripts/</code>. Each is served directly by
-Pages, so you can download it from this page without cloning. Every
-script is <code>set +e</code>, never calls <code>exit 1</code>, and prints
-a diagnostic rather than a bare failure.
+Each is served directly by Pages, so you can <strong>Preview</strong> it
+inline (no clone required), or <strong>Download</strong> it. Preview opens a
+modal that fetches the file from this same origin; Copy inside the modal puts
+the exact text on your clipboard. Every script is <code>set +e</code>, never
+calls <code>exit 1</code>, and prints a diagnostic rather than a bare failure.
 </p>
 
 <table>
-<tr>
-<th>Script</th><th>What it does</th><th>Run</th><th></th>
-</tr>
+<tr><th>Script</th><th>What it does</th><th>Run</th><th></th></tr>
 <tr>
 <td><code>xfce-wm-diagnose.sh</code></td>
 <td>Read-only. Processes, compositor, RENDER, graphics driver, Alt-Tab binding.</td>
 <td><code>bash scripts/xfce-wm-diagnose.sh</code></td>
-<td><a class="dlbtn" href="scripts/xfce-wm-diagnose.sh" download>Download</a></td>
+<td class="actions"><button class="previewbtn" data-script="xfce-wm-diagnose.sh" title="Preview inline">Preview</button><a class="dlbtn" href="scripts/xfce-wm-diagnose.sh" download>Download</a></td>
 </tr>
 <tr>
 <td><code>xfce-wm-fix.sh</code></td>
-<td>Idempotent, reversible. Starts the WM if missing, persists compositor off, writes CSD config.</td>
+<td>Idempotent, reversible. Starts WM if missing, persists compositor off, writes CSD config.</td>
 <td><code>bash scripts/xfce-wm-fix.sh</code></td>
-<td><a class="dlbtn" href="scripts/xfce-wm-fix.sh" download>Download</a></td>
+<td class="actions"><button class="previewbtn" data-script="xfce-wm-fix.sh" title="Preview inline">Preview</button><a class="dlbtn" href="scripts/xfce-wm-fix.sh" download>Download</a></td>
 </tr>
 <tr>
 <td><code>monitor.sh</code></td>
 <td>One-shot health snapshot to <code>~/.local/state/xfce-forensics/</code>. Cron-safe.</td>
 <td><code>bash scripts/monitor.sh</code></td>
-<td><a class="dlbtn" href="scripts/monitor.sh" download>Download</a></td>
+<td class="actions"><button class="previewbtn" data-script="monitor.sh" title="Preview inline">Preview</button><a class="dlbtn" href="scripts/monitor.sh" download>Download</a></td>
 </tr>
 <tr>
 <td><code>recover.sh</code></td>
 <td>tibet-snap compare + verify + rollback plan. Does not execute anything.</td>
 <td><code>bash scripts/recover.sh &lt;a&gt; &lt;b&gt;</code></td>
-<td><a class="dlbtn" href="scripts/recover.sh" download>Download</a></td>
+<td class="actions"><button class="previewbtn" data-script="recover.sh" title="Preview inline">Preview</button><a class="dlbtn" href="scripts/recover.sh" download>Download</a></td>
 </tr>
 <tr>
 <td><code>configsnap-baseline.sh</code></td>
 <td>One-shot configsnap: <code>pre</code>, <code>post</code>, <code>report</code>. Auto-diffs on post.</td>
 <td><code>sudo bash scripts/configsnap-baseline.sh pre</code></td>
-<td><a class="dlbtn" href="scripts/configsnap-baseline.sh" download>Download</a></td>
+<td class="actions"><button class="previewbtn" data-script="configsnap-baseline.sh" title="Preview inline">Preview</button><a class="dlbtn" href="scripts/configsnap-baseline.sh" download>Download</a></td>
 </tr>
 <tr>
 <td><code>tibet-snap-baseline.sh</code></td>
 <td>One-shot sealed snapshot + list + verify + Python rollback plan. Falls back to tibet-wayback.</td>
 <td><code>bash scripts/tibet-snap-baseline.sh baseline-$(date +%s)</code></td>
-<td><a class="dlbtn" href="scripts/tibet-snap-baseline.sh" download>Download</a></td>
+<td class="actions"><button class="previewbtn" data-script="tibet-snap-baseline.sh" title="Preview inline">Preview</button><a class="dlbtn" href="scripts/tibet-snap-baseline.sh" download>Download</a></td>
 </tr>
 <tr>
 <td><code>forensic-baseline.sh</code></td>
 <td>Runs diagnose + configsnap + tibet-snap into one timestamped <code>.tar.gz</code>.</td>
 <td><code>bash scripts/forensic-baseline.sh</code></td>
-<td><a class="dlbtn" href="scripts/forensic-baseline.sh" download>Download</a></td>
+<td class="actions"><button class="previewbtn" data-script="forensic-baseline.sh" title="Preview inline">Preview</button><a class="dlbtn" href="scripts/forensic-baseline.sh" download>Download</a></td>
 </tr>
 </table>
 
 <h2>If this happens again</h2>
-
 <ol>
-<li>
-<strong>No decorations, Alt-Tab dead.</strong> Run
-<code>pgrep -x xfwm4</code>. If it prints nothing, the WM is not running.
-</li>
-<li>
-<strong>Start it manually, compositor off.</strong>
-<pre><code>setsid nohup xfwm4 --compositor=off &gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code></pre>
-If decorations return, the persistent setting was overwritten — reapply it
-with <code>xfconf-query -c xfwm4 -p /general/use_compositing -s false</code>.
-</li>
-<li>
-<strong>WM still dies immediately.</strong> Read
-<code>/tmp/xfwm4.log</code>. If it is empty, the failure happened before
-logging started, which is the RENDER case. Confirm with
-<code>xdpyinfo | grep -i render</code>.
-</li>
-<li>
-<strong>RENDER is present but the WM still dies.</strong> Check
-<code>/var/log/Xorg.0.log</code> for driver errors, and try a different
-compositor backend if you need compositing.
-</li>
-<li>
-<strong>Decorations return but menus are black.</strong> The compositor is
-off and CSD is on. Add <code>GTK_CSD=0</code> to
-<code>~/.config/environment.d/</code> and log in again.
-</li>
-<li>
-<strong>Need evidence for a support ticket.</strong> Run
-<code>bash scripts/forensic-baseline.sh</code>; it produces a single
-<code>.tar.gz</code> with diagnostics, configsnap output, and a sealed
-tibet snapshot listing.
-</li>
+<li><strong>No decorations, Alt-Tab dead.</strong> <code>pgrep -x xfwm4</code>.</li>
+<li><strong>Start it manually.</strong> <code>setsid nohup xfwm4 --compositor=off &gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code>; then re-apply the persistent setting.</li>
+<li><strong>WM still dies immediately.</strong> <code>/tmp/xfwm4.log</code>; if empty, <code>xdpyinfo | grep -i render</code>.</li>
+<li><strong>Decorations back but menus black.</strong> Add <code>GTK_CSD=0</code> and log in again.</li>
+<li><strong>Need evidence.</strong> <code>bash scripts/forensic-baseline.sh</code>; produces <code>.tar.gz</code>.</li>
 </ol>
 
 <h2>References</h2>
-
 <ul>
-<li>
-<a href="https://gitlab.xfce.org/xfce/xfwm4">xfwm4 upstream</a> — the
-window manager. Its commit history is where the "abort before logging
-when RENDER is missing" behaviour lives.
-</li>
-<li>
-<a href="https://www.x.org/releases/X11R7.7/doc/libXrender/libXrender.txt">libXrender manual</a> — what RENDER does and what it needs.
-</li>
-<li>
-<a href="https://man7.org/linux/man-pages/man5/environment.d.5.html">environment.d(5)</a> — the file format and semantics for
-<code>~/.config/environment.d/</code>.
-</li>
-<li>
-<a href="https://man.sourcentral.org/f40/1+configsnap">configsnap(1) man page</a> — options, phases, and the
-<code>additional.conf</code> format.
-</li>
-<li>
-<a href="https://github.com/rackerlabs/configsnap">configsnap upstream</a> — source and examples.
-</li>
-<li>
-<a href="https://pypi.org/project/tibet-snap/">tibet-snap on PyPI</a> —
-CLI, Python API, and the deprecation notice pointing at
-<code>tibet-wayback</code>.
-</li>
-<li>
-<a href="https://docs.github.com/en/rest/pages/pages">GitHub Pages API</a>
-— the endpoints behind this site's deployment.
-</li>
-<li>
-<a href="https://cli.github.com/manual/gh_api">gh api manual</a> — why
-nested parameters need bracket syntax
-(<code>-f source[branch]=main</code>), not JSON strings.
-</li>
-<li>
-<a href="https://github.com/orgs/community/discussions/144171">GitHub
-community discussion 144171</a> — the two-step
-<code>workflow</code>→<code>legacy</code> Pages enable workaround.
-</li>
-<li><a href="https://github.com/statedrift/statedrift">statedrift</a> — host
-state snapshots with hash chaining.</li>
+<li><a href="https://gitlab.xfce.org/xfce/xfwm4">xfwm4 upstream</a></li>
+<li><a href="https://www.x.org/releases/X11R7.7/doc/libXrender/libXrender.txt">libXrender manual</a></li>
+<li><a href="https://man7.org/linux/man-pages/man5/environment.d.5.html">environment.d(5)</a></li>
+<li><a href="https://man.sourcentral.org/f40/1+configsnap">configsnap(1)</a></li>
+<li><a href="https://github.com/rackerlabs/configsnap">configsnap upstream</a></li>
+<li><a href="https://pypi.org/project/tibet-snap/">tibet-snap on PyPI</a> (deprecated in favour of tibet-wayback)</li>
+<li><a href="https://docs.github.com/en/rest/pages/pages">GitHub Pages API</a></li>
+<li><a href="https://cli.github.com/manual/gh_api">gh api nested fields</a></li>
+<li><a href="https://github.com/orgs/community/discussions/144171">two-step Pages workaround</a></li>
+<li><a href="https://github.com/statedrift/statedrift">statedrift</a></li>
 </ul>
 
 <p class="muted">
-This page is the explainer half of the repository. The scripts under
-<code>scripts/</code> are the executable half. Every command and output on
-this page can be reproduced from a clean Fedora 43 XFCE install. No
-secrets, hostnames, or IP addresses are included.
+This page is the explainer half. The scripts under <code>scripts/</code> are
+the executable half. No secrets, hostnames, or IP addresses are included.
 </p>
 
 </main>
+
+<!-- Preview modal: hidden until a Preview button is clicked. -->
+<div id="preview-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-body">
+    <div class="modal-head">
+      <span class="modal-title" id="modal-title">Script preview</span>
+      <div class="modal-actions">
+        <button class="copybtn" id="modal-copy" type="button">Copy</button>
+        <button class="closebtn" id="modal-close" type="button" aria-label="Close preview">×</button>
+      </div>
+    </div>
+    <pre id="modal-pre"><code id="modal-code"></code></pre>
+  </div>
+</div>
 
 <script>
 (function () {
   "use strict";
 
-  // 1. Derive the repo .zip URL from the Pages hostname/path.
+  // ---- repo .zip derivation ------------------------------------------------
   var zip = document.getElementById("dl-zip");
   if (zip) {
     var host = location.hostname || "";
@@ -719,7 +338,7 @@ secrets, hostnames, or IP addresses are included.
     zip.href = "https://github.com/" + user + "/" + repo + "/archive/refs/heads/main.zip";
   }
 
-  // 2. Wrap every <pre> with a Copy button (clipboard API, execCommand fallback).
+  // ---- clipboard fallback --------------------------------------------------
   function copyFallback(text, done) {
     var ta = document.createElement("textarea");
     ta.value = text;
@@ -734,9 +353,89 @@ secrets, hostnames, or IP addresses are included.
     done(ok);
   }
 
+  function copyText(text, btn, okLabel, failLabel) {
+    var finish = function (ok) {
+      btn.textContent = ok ? okLabel : failLabel;
+      setTimeout(function () { btn.textContent = "Copy"; }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { finish(true); },
+        function () { copyFallback(text, finish); }
+      );
+    } else {
+      copyFallback(text, finish);
+    }
+  }
+
+  // ---- preview modal -------------------------------------------------------
+  var modal      = document.getElementById("preview-modal");
+  var modalCode  = document.getElementById("modal-code");
+  var modalTitle = document.getElementById("modal-title");
+  var modalCopy  = document.getElementById("modal-copy");
+  var modalClose = document.getElementById("modal-close");
+
+  function openModal() { modal.hidden = false; document.body.style.overflow = "hidden"; }
+  function closeModal() { modal.hidden = true;  document.body.style.overflow = ""; }
+
+  // Fetch from the same origin Pages serves from.
+  function loadScript(name) {
+    modalTitle.textContent = "scripts/" + name;
+    modalCode.textContent = "loading…";
+    openModal();
+    fetch("scripts/" + name, { cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      })
+      .then(function (text) {
+        modalCode.textContent = text;
+      })
+      .catch(function (err) {
+        modalCode.textContent =
+          "failed to load scripts/" + name + "\n\n" + err.message +
+          "\n\nIf you are viewing this offline (file://), fetch() is disabled " +
+          "by the browser. Serve the directory over HTTP, e.g.:\n" +
+          "  python3 -m http.server 8000\n" +
+          "then open http://localhost:8000/";
+      });
+  }
+
+  // Wire every Preview button on the page.
+  var previewBtns = document.querySelectorAll(".previewbtn");
+  for (var i = 0; i < previewBtns.length; i++) {
+    (function (btn) {
+      btn.addEventListener("click", function () {
+        var name = btn.getAttribute("data-script") || "";
+        if (name) loadScript(name);
+      });
+    })(previewBtns[i]);
+  }
+
+  // Close: X button, backdrop click, Escape.
+  modalClose.addEventListener("click", closeModal);
+  modal.addEventListener("click", function (e) {
+    if (e.target && e.target.getAttribute && e.target.getAttribute("data-close") === "1") {
+      closeModal();
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !modal.hidden) closeModal();
+  });
+
+  // Copy inside the modal.
+  modalCopy.addEventListener("click", function () {
+    copyText(modalCode.textContent || "", modalCopy, "Copied", "Copy failed");
+  });
+
+  // ---- auto-wrap every page-level <pre> with a Copy button ----------------
+  // Skips the modal's <pre>, which has its own Copy button in the header.
   var pres = document.querySelectorAll("pre");
-  for (var i = 0; i < pres.length; i++) {
+  for (var j = 0; j < pres.length; j++) {
     (function (pre) {
+      if (pre.closest && pre.closest(".modal")) return;   // skip modal
+      if (pre.id === "modal-pre") return;                 // double safeguard
+
       var wrap = document.createElement("div");
       wrap.className = "codeblock";
       var bar = document.createElement("div");
@@ -747,26 +446,14 @@ secrets, hostnames, or IP addresses are included.
       btn.textContent = "Copy";
 
       btn.addEventListener("click", function () {
-        var text = pre.innerText;
-        var finish = function (ok) {
-          btn.textContent = ok ? "Copied" : "Copy failed";
-          setTimeout(function () { btn.textContent = "Copy"; }, 1400);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(
-            function () { finish(true); },
-            function () { copyFallback(text, finish); }
-          );
-        } else {
-          copyFallback(text, finish);
-        }
+        copyText(pre.innerText, btn, "Copied", "Copy failed");
       });
 
       bar.appendChild(btn);
       pre.parentNode.insertBefore(wrap, pre);
       wrap.appendChild(bar);
       wrap.appendChild(pre);
-    })(pres[i]);
+    })(pres[j]);
   }
 })();
 </script>

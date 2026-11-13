@@ -2,7 +2,7 @@
 # One-shot configsnap: pre | post | report.
 #   sudo ./configsnap-baseline.sh pre
 #   ... change something ...
-#   sudo ./configsnap-baseline.sh post      # phase contains "post" -> diff
+#   sudo ./configsnap-baseline.sh post
 #   sudo ./configsnap-baseline.sh report <tag>
 #
 # Env overrides:
@@ -60,9 +60,6 @@ case "$PHASE" in
     ;;
   *)
     echo "usage: $0 {pre|post|report} [tag]"
-    echo "  pre     capture baseline"
-    echo "  post    capture after change and diff against pre (same tag if reused)"
-    echo "  report  re-diff an existing tag without recollecting (-C)"
     exit 0
     ;;
 esac

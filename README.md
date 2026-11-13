@@ -18,7 +18,7 @@ before its logging subsystem opens — so no log appears in `journalctl`,
 Persist `GTK_CSD=0` in `~/.config/environment.d/10-gtk-csd.conf` as plain
 `KEY=VALUE` — `environment.d` does not accept `export`.
 
-## Scripts (also served at /scripts/<name>.sh)
+## Scripts (also served at /scripts/<name>.sh; use Preview in the site to see them inline)
 
 | Script | Purpose |
 |---|---|
