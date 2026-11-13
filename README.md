@@ -30,6 +30,7 @@ Persist `GTK_CSD=0` in `~/.config/environment.d/10-gtk-csd.conf` as plain
 - xfwm4 upstream: <https://gitlab.xfce.org/xfce/xfwm4>
 - environment.d(5): <https://man7.org/linux/man-pages/man5/environment.d.5.html>
 - GitHub Pages API: <https://docs.github.com/en/rest/pages/pages>
+- gh api nested fields: <https://cli.github.com/manual/gh_api>
 - statedrift: <https://github.com/statedrift/statedrift>
 - configsnap: <https://packages.fedoraproject.org/pkgs/configsnap/configsnap/>
 - tibet-snap: <https://pypi.org/project/tibet-snap/>
