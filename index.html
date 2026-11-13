@@ -5,94 +5,625 @@
 <style>
 :root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--card:#161b22;--border:#30363d;--warn:#d29922;--ok:#3fb950}
 *{box-sizing:border-box}
-body{margin:0;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+body{margin:0;font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
 main{max-width:900px;margin:0 auto;padding:2rem 1.25rem 4rem}
-h1{font-size:2rem;line-height:1.2;margin:0 0 .25rem}
-h2{margin-top:2.5rem;border-bottom:1px solid var(--border);padding-bottom:.35rem}
-h3{margin-top:1.5rem;color:var(--accent)}
+h1{font-size:2rem;line-height:1.2;margin:0 0 .5rem}
+h2{margin-top:2.75rem;border-bottom:1px solid var(--border);padding-bottom:.4rem}
+h3{margin-top:1.75rem;color:var(--accent)}
 a{color:var(--accent)}
 code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
-pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow:auto}
-code{background:var(--card);padding:.12em .35em;border-radius:4px}
+pre{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;overflow:auto;line-height:1.45}
+code{background:var(--card);padding:.1em .35em;border-radius:4px}
 pre code{background:none;padding:0}
+.lead{font-size:1.05rem;color:var(--fg)}
 .muted{color:var(--muted)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;margin:1rem 0}
 .ok{color:var(--ok)}.warn{color:var(--warn)}
-table{width:100%;border-collapse:collapse;margin:1rem 0}
-th,td{text-align:left;padding:.5rem .65rem;border-bottom:1px solid var(--border);vertical-align:top}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.94em}
+th,td{text-align:left;padding:.55rem .65rem;border-bottom:1px solid var(--border);vertical-align:top}
 th{color:var(--muted);font-weight:600}
+.glossary dt{font-weight:600;color:var(--accent);margin-top:1.1rem}
+.glossary dd{margin:.25rem 0 0 0;padding:0}
+ol li, ul li{margin:.35rem 0}
 </style></head><body><main>
 
 <h1>XFCE Window Manager: Silent Failure &amp; Forensic Recovery</h1>
-<p class="muted">Fedora 43 · XFCE 4.20 · xfwm4 · Intel Ivy Bridge · X11</p>
 
-<div class="card"><strong>No secrets.</strong> No hostnames, IPs, or credentials.</div>
+<p class="lead">
+This page explains <strong>why</strong> an XFCE desktop suddenly lost all window
+decorations, Alt-Tab, and window controls, <strong>how</strong> we diagnosed the
+cause, and <strong>how</strong> we fixed it in a way that survives reboots. No
+prior knowledge of X11, window managers, or compositors is assumed. Every term
+is defined the first time it appears, and every command is shown with the
+exact output to expect in both the broken and healthy states.
+</p>
 
-<h2>How we got here</h2>
-<h3>1. Symptoms</h3>
-<ul><li>Lost window decorations.</li><li>Alt-Tab failed on all programs.</li>
-<li>Black border around the Applications dropdown.</li><li>Firefox min/max buttons failed.</li></ul>
+<h2>The short answer</h2>
+<div class="card">
+<p>
+The window manager — <code>xfwm4</code>, the program that draws title bars,
+borders, and buttons and handles Alt-Tab — <strong>was not running</strong>.
+It failed to start on every login because the X display server was not
+advertising an optional feature called <strong>RENDER</strong> that
+<code>xfwm4</code> needs when it tries to start its <strong>compositor</strong>.
+With no window manager, there were no decorations and no Alt-Tab.
+</p>
+<p>
+The fix is to tell <code>xfwm4</code> <em>not</em> to start the compositor.
+That skips the code path that requires RENDER, so <code>xfwm4</code> stays
+running. Because there is now no compositor to blend transparency, GTK
+applications that draw their own decorations (CSD) show a black border where
+their shadow would be. Setting <code>GTK_CSD=0</code> tells them to let the
+window manager draw plain borders instead.
+</p>
+</div>
 
-<h3>2. Diagnostics (RENDER, not XRender)</h3>
-<pre><code>pgrep -x xfwm4
-pgrep -x xfce4-session
-xdpyinfo | grep -i render</code></pre>
+<h2>Glossary</h2>
+<p>Every technical term used on this page, defined once. Skim now, return later.</p>
 
-<h3>3. Root cause</h3>
-<p><code>xfwm4</code> 4.20 aborts before opening its logging subsystem when
-<code>RENDER</code> is missing. That is why <code>journalctl</code> and
-<code>~/.xsession-errors</code> are silent.</p>
+<dl class="glossary">
 
-<h3>4. Fix</h3>
-<pre><code>setsid nohup xfwm4 --compositor=off &gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;
-xfconf-query -c xfwm4 -p /general/use_compositing -s false
-export GTK_CSD=0</code></pre>
+<dt>Window manager (WM)</dt>
+<dd>
+<p>
+The program that draws the title bar, borders, and buttons around every
+window, and handles window-level keyboard shortcuts such as Alt-Tab.
+Without a WM running, applications still draw their own content, but no
+frame surrounds the window: it cannot be moved with the mouse, resized, or
+minimised from a title bar, and Alt-Tab does nothing.
+</p>
+<p>On XFCE, the window manager is <code>xfwm4</code>, a single process.</p>
+</dd>
 
-<h2>Where we are</h2>
+<dt>X11 / Xorg (the display server)</dt>
+<dd>
+<p>
+The program that owns the screen, keyboard, and mouse, and mediates
+between applications and hardware. Every graphical action goes through
+it. Xorg is the classic X11 server; Xwayland is a compatibility layer
+under Wayland. If you see <code>DISPLAY=:0.0</code> in your environment,
+you are on X11.
+</p>
+</dd>
+
+<dt>XFCE</dt>
+<dd>
+<p>
+A lightweight desktop environment that provides the panel, the
+Applications menu, settings dialogs, and its default window manager
+<code>xfwm4</code>.
+</p>
+</dd>
+
+<dt>Compositor</dt>
+<dd>
+<p>
+An optional layer that combines every window's pixels into a single
+final image before the screen shows it. Compositors enable
+<strong>transparency</strong>, <strong>drop shadows</strong>,
+<strong>smooth animations</strong>, and the shadows around GTK's
+client-side decorations.
+</p>
+<p>
+Without a compositor, every application draws directly to the screen in
+whatever order it happens to draw, and pixels that were meant to be
+semi-transparent are instead painted solid.
+</p>
+</dd>
+
+<dt>RENDER / XRender</dt>
+<dd>
+<p>
+An <strong>X11 extension</strong> — an optional feature the display server
+offers to applications. RENDER provides alpha blending and Porter-Duff
+composition, which the compositor needs.
+</p>
+<p>
+If the display server does not advertise RENDER, the compositor cannot
+function. The X11 extension is named <code>RENDER</code> (all caps). The
+client library that talks to it is named <code>libXrender</code> (one
+word). Confusing the two is a common trap: <code>ldconfig -p | grep -i
+xrender</code> shows the <em>library</em> is installed even when the
+server does not offer the <em>extension</em>.
+</p>
+</dd>
+
+<dt>xfconf-query</dt>
+<dd>
+<p>
+Command-line tool for reading and writing XFCE's per-user settings
+database. For example,
+<code>xfconf-query -c xfwm4 -p /general/use_compositing</code> reads
+whether the window manager's compositor is enabled.
+</p>
+</dd>
+
+<dt>CSD / SSD</dt>
+<dd>
+<p>
+<strong>Client-Side Decoration</strong> — the application draws its own
+title bar and border. This is what modern GTK applications do, and it
+relies on the compositor to render rounded corners and drop shadows
+correctly.
+</p>
+<p>
+<strong>Server-Side Decoration</strong> — the window manager draws the
+title bar and border on the application's behalf. This is the classic
+X11 model, and it does not need a compositor.
+</p>
+<p>See the diagrams further down for the visual difference.</p>
+</dd>
+
+<dt>environment.d</dt>
+<dd>
+<p>
+A directory (<code>~/.config/environment.d/</code>) where files named
+<code>*.conf</code> set environment variables for every program in your
+graphical session. Read at login by <code>systemd --user</code>.
+</p>
+<p>
+Each line is a plain <code>NAME=value</code>. There is no
+<code>export</code> keyword and no shell syntax.
+</p>
+</dd>
+
+<dt>GTK</dt>
+<dd>
+<p>
+The graphical toolkit used by most XFCE applications (Thunar, Mousepad,
+the panel's menus) and by Firefox. Version 3 and later default to CSD,
+which is why the black border appears when there is no compositor.
+</p>
+</dd>
+
+</dl>
+
+<h2>What the user observed, and what each symptom meant</h2>
+
 <table>
-<tr><th>Check</th><th>Result</th></tr>
-<tr><td>xfwm4 PID</td><td class="ok">present</td></tr>
-<tr><td>use_compositing</td><td class="ok">false</td></tr>
-<tr><td>GTK_CSD</td><td class="ok">0</td></tr>
-<tr><td>Decorations / Alt-Tab</td><td class="ok">working</td></tr>
-<tr><td>Applications menu</td><td class="ok">no black edge</td></tr>
-<tr><td>RENDER on X server</td><td class="warn">absent — compositor stays off</td></tr>
+<tr><th>Symptom</th><th>Diagnosis</th></tr>
+<tr>
+<td>Every window lost its title bar, border, and close button</td>
+<td>
+The window manager is not running. Applications still draw their own
+content, but nothing is drawing the frame around them.
+</td>
+</tr>
+<tr>
+<td>Alt-Tab does nothing</td>
+<td>
+Alt-Tab is not a desktop feature; it is a keyboard shortcut handled by
+the window manager. No WM, no Alt-Tab.
+</td>
+</tr>
+<tr>
+<td>Firefox minimise/maximise buttons stopped working</td>
+<td>
+Firefox asks the window manager to do those actions. With no WM the
+request has nowhere to go.
+</td>
+</tr>
+<tr>
+<td>A thick black border appeared around the Applications menu</td>
+<td>
+This is <em>not</em> caused by the missing WM. It appears once the WM is
+back but the compositor is off: GTK is drawing a CSD shadow whose
+transparency is not being blended, so the "transparent" pixels render
+black. The fix for this is separate from the fix for the missing WM.
+</td>
+</tr>
 </table>
 
-<h2>Pages build_type=legacy</h2>
-<p><strong>legacy</strong> = branch-based Pages. GitHub serves what is pushed to
-<code>main</code> at <code>/</code>; <code>.nojekyll</code> prevents Jekyll.
-This is the standard mode for pre-built static HTML — it is not deprecated.
-The API requires a two-step enable on some repos (POST workflow, then PUT
-legacy) to avoid a documented 422.</p>
+<h2>Diagnostics you can run</h2>
 
-<h2>Verbatim Pages telemetry</h2>
-<pre><code>gh api repos/$OWNER/$REPO_NAME/pages
-gh api repos/$OWNER/$REPO_NAME/pages/builds/latest --jq '.status // "null"'
-gh run list --repo $OWNER/$REPO_NAME --workflow=pages-build-deployment --limit 5</code></pre>
+<p>
+Each command below is read-only. Run it in a terminal. The <em>broken</em>
+and <em>healthy</em> columns tell you exactly what each line prints in the
+two states.
+</p>
 
-<h2>Scripts</h2>
+<table>
+<tr>
+<th>Command</th>
+<th>Broken output</th>
+<th>Healthy output</th>
+<th>What it tells you</th>
+</tr>
+<tr>
+<td><code>pgrep -x xfwm4</code></td>
+<td>nothing; exit code 1</td>
+<td>a PID, e.g. <code>139923</code></td>
+<td>Whether the window manager is running.</td>
+</tr>
+<tr>
+<td><code>pgrep -x xfce4-session</code></td>
+<td>a PID (session manager is fine)</td>
+<td>a PID</td>
+<td>Whether the session manager is alive. If it is and
+<code>xfwm4</code> is not, then <code>xfwm4</code> failed to
+<em>stay</em> running, not failed to be launched.</td>
+</tr>
+<tr>
+<td><code>xdpyinfo | grep -i render</code></td>
+<td>nothing</td>
+<td><code>RENDER</code></td>
+<td>The root-cause question: does the X server advertise RENDER?</td>
+</tr>
+<tr>
+<td><code>xfconf-query -c xfwm4 -p /general/use_compositing</code></td>
+<td><code>true</code></td>
+<td><code>false</code></td>
+<td>Whether the WM is configured to start its compositor (which
+requires RENDER).</td>
+</tr>
+</table>
+
+<p>
+Example of a broken state, run together:
+</p>
+
+<pre><code>$ pgrep -x xfwm4
+$ pgrep -x xfce4-session
+4214
+$ xdpyinfo | grep -i render
+$ xfconf-query -c xfwm4 -p /general/use_compositing
+true</code></pre>
+
+<p>
+Reading this: the WM is not running, the session manager is, RENDER is
+absent, and the compositor is enabled. That combination is the exact
+failure. The WM tried to honour <code>use_compositing=true</code>, asked
+X11 for RENDER, was refused, and exited silently.
+</p>
+
+<h2>The fix, line by line</h2>
+
+<h3>1. Start the window manager with the compositor disabled</h3>
+
+<pre><code>setsid nohup xfwm4 --compositor=off &gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code></pre>
+
+<p>Four pieces of this command each guard against a different failure:</p>
+
 <ul>
-<li><a href="scripts/xfce-wm-diagnose.sh">xfce-wm-diagnose.sh</a> — read-only.</li>
-<li><a href="scripts/xfce-wm-fix.sh">xfce-wm-fix.sh</a> — reversible fix.</li>
-<li><a href="scripts/monitor.sh">monitor.sh</a> — snapshot + drift.</li>
-<li><a href="scripts/recover.sh">recover.sh</a> — compare/verify + rollback plan.</li>
+<li>
+<code>setsid</code> — run in a new session with no controlling terminal.
+Without this, the WM dies the moment you close the terminal.
+</li>
+<li>
+<code>nohup</code> — ignore the SIGHUP signal that logout sends.
+Belt-and-braces with <code>setsid</code>.
+</li>
+<li>
+<code>--compositor=off</code> — do not attempt to enable the compositor.
+This is the crucial flag: it skips the code path that needs RENDER, so
+the WM starts and stays running.
+</li>
+<li>
+<code>&gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code> — send stdout
+and stderr to a log, detach stdin, and run in the background so your
+shell prompt returns immediately.
+</li>
 </ul>
 
-<h2>Why not <code>xfwm4 --replace --compositor=on</code>?</h2>
-<p>It kills the working WM first. Without <code>RENDER</code> the replacement fails and you are left with no WM.</p>
+<p>
+After this line, <code>pgrep -x xfwm4</code> prints a PID, and all window
+decorations and Alt-Tab work immediately.
+</p>
+
+<h3>2. Make the setting survive logout</h3>
+
+<pre><code>xfconf-query -c xfwm4 -p /general/use_compositing -s false</code></pre>
+
+<p>
+This writes <code>false</code> to XFCE's per-user settings database. The
+next time the session manager starts <code>xfwm4</code> at login, it reads
+this value and skips the compositor without any manual command.
+<strong>This is what makes the fix survive reboots.</strong>
+</p>
+
+<p>Verify with:</p>
+
+<pre><code>$ xfconf-query -c xfwm4 -p /general/use_compositing
+false</code></pre>
+
+<h3>3. Disable GTK client-side decorations (fixes the black border)</h3>
+
+<pre><code>export GTK_CSD=0</code></pre>
+
+<p>
+This line, on its own, does nothing to fix the missing WM. It removes the
+black border that otherwise appears once the WM is back without a
+compositor. The next section explains why.
+</p>
+
+<h3>4. Persist <code>GTK_CSD</code> across sessions</h3>
+
+<pre><code>mkdir -p ~/.config/environment.d
+printf 'GTK_CSD=0\n' &gt; ~/.config/environment.d/10-gtk-csd.conf</code></pre>
+
+<p>
+<code>environment.d</code> files are plain <code>NAME=value</code>, one
+per line. No <code>export</code>, no quotes, no shell syntax. Read at
+login by <code>systemd --user</code>, which passes them to every
+graphical program:
+</p>
+
+<pre><code>$ cat ~/.config/environment.d/10-gtk-csd.conf
+GTK_CSD=0</code></pre>
+
+<p>
+Adding the same line to <code>~/.bashrc</code> is a second safeguard for
+programs you launch from a terminal.
+</p>
+
+<h2>Why disabling the compositor removes the black border</h2>
+
+<p>
+The black border is not caused by the fix; it is caused by the absence of
+a compositor that the fix leaves in place. Here is the mechanism, with
+diagrams.
+</p>
+
+<h3>With CSD (client-side decoration, the modern GTK default)</h3>
+
+<pre><code>┌──────────────────────────┐  &lt;- app draws this border
+│  ●  ●  ●     Firefox     │  &lt;- app draws these buttons
+├──────────────────────────┤
+│                          │
+│      app content         │
+│                          │
+└──────────────────────────┘  &lt;- app draws this border</code></pre>
+
+<p>
+The application draws its own title bar and border, and adds a soft drop
+shadow around the edges for a modern look. The shadow is
+<strong>semi-transparent black</strong>. To render it correctly, the app
+relies on the compositor to blend those semi-transparent pixels with
+whatever is underneath.
+</p>
+
+<h3>Without a compositor</h3>
+
+<p>
+No compositor means nothing blends the transparency. X11 paints every
+pixel directly to the screen. The "semi-transparent black" shadow region
+becomes <strong>solid black</strong>. On a menu, this appears as a thick
+black border.
+</p>
+
+<h3>With <code>GTK_CSD=0</code></h3>
+
+<pre><code>┌──────────────────────────┐  &lt;- WM draws this
+│         Firefox          │  &lt;- WM draws this
+├──────────────────────────┤
+│                          │
+│      app content         │
+│                          │
+└──────────────────────────┘  &lt;- WM draws this</code></pre>
+
+<p>
+The application stops drawing its own border. The window manager draws a
+plain title bar using the WM theme. No transparency, no shadow, no black
+pixels. This is the classic SSD model.
+</p>
+
+<p>
+That is why the fix is two-part: <strong>disable the compositor</strong>
+(so <code>xfwm4</code> can start at all), and <strong>disable CSD</strong>
+(so menus and CSD windows still look correct without a compositor).
+</p>
+
+<h2>Before and after</h2>
+
+<table>
+<tr><th></th><th>Before fix</th><th>After fix</th></tr>
+<tr><td><code>pgrep -x xfwm4</code></td><td>no PID</td><td>PID present</td></tr>
+<tr><td>Window decorations</td><td>none</td><td>WM-drawn title bars</td></tr>
+<tr><td>Alt-Tab</td><td>nothing</td><td>window switcher appears</td></tr>
+<tr><td>Min/Max buttons</td><td>do nothing</td><td>work</td></tr>
+<tr><td><code>use_compositing</code></td><td><code>true</code> (WM dies)</td><td><code>false</code> (persisted)</td></tr>
+<tr><td>Applications menu</td><td>black border appears</td><td>no black border, thanks to <code>GTK_CSD=0</code></td></tr>
+<tr><td>RENDER on X server</td><td>absent (root cause)</td><td>still absent (unfixed; compositor must stay off)</td></tr>
+</table>
+
+<p>
+<strong>Outstanding item:</strong> RENDER is still absent on the X server.
+That is the deeper issue, and the fix sidesteps it rather than solving it.
+Restoring RENDER on the X server is a separate project involving Xorg
+configuration and the graphics driver; until that is done, the compositor
+must stay off.
+</p>
+
+<h2>Forensic monitoring</h2>
+
+<p>
+The failure was invisible because <code>xfwm4</code> exited before its
+logging subsystem opened. Nothing was written to <code>journalctl</code>,
+<code>~/.xsession-errors</code>, or <code>XFWM4_LOG_FILE</code>. A future
+regression would be equally silent. These tools close that gap.
+</p>
+
+<h3>statedrift — tamper-evident snapshots</h3>
+
+<p>
+statedrift records the state of the whole host (packages, services, users,
+network, files) as SHA-256 hash-chained snapshots. Each snapshot commits
+to its predecessor, so a retroactive edit to an old snapshot is detectable.
+</p>
+
+<pre><code>sudo statedrift init
+sudo statedrift snap
+statedrift diff HEAD~1 HEAD</code></pre>
+
+<p>Example diff:</p>
+
+<pre><code>+ package: htop 3.3.0-1.fc43
+- service: firewalld.service (running)
++ user: alice (uid 1001)</code></pre>
+
+<p>
+<code>statedrift verify</code> reports whether the chain is intact.
+<code>statedrift export</code> produces a redacted evidence bundle for an
+external auditor or a support ticket.
+</p>
+
+<h3>configsnap — Fedora-native baseline</h3>
+
+<p>
+configsnap is packaged in Fedora's own repositories. It records "important
+system state" — packages, services, kernel modules, user accounts, network
+interfaces — and diffs it against a stored baseline.
+</p>
+
+<pre><code>sudo dnf install -y configsnap
+sudo configsnap --phase pre
+# ... something happens ...
+sudo configsnap --phase post</code></pre>
+
+<p>
+The <code>post</code> phase writes a diff file listing what changed. It is
+a lightweight audit before and after a system change.
+</p>
+
+<h3>tibet-snap — cryptographic snapshots and rollback plans</h3>
+
+<p>
+tibet-snap focuses on file-level snapshots with cryptographic integrity (a
+signed token chain). Its distinguishing feature is
+<strong>rollback plan generation</strong>: given a snapshot, it produces a
+concrete list of "restore this file, remove that file, revert this setting"
+actions.
+</p>
+
+<pre><code>python3 -m pip install --user tibet-snap
+tibet-snap create baseline /etc/X11 /etc/systemd
+tibet-snap compare &lt;id_a&gt; &lt;id_b&gt;
+python3 - &lt;&lt;'PY'
+from tibet_snap import SnapEngine
+engine = SnapEngine(store_dir=".tibet-snap")
+for action in engine.rollback_plan(engine.list_snapshots()[-1].id):
+    print(action)
+PY</code></pre>
+
+<h3>Which tool when</h3>
+
+<table>
+<tr><th>Question</th><th>Tool</th></tr>
+<tr>
+<td>"What changed on this host between yesterday and today?"</td>
+<td>statedrift diff</td>
+</tr>
+<tr>
+<td>"Prove to an auditor that these logs were not altered."</td>
+<td>statedrift verify + export</td>
+</tr>
+<tr>
+<td>"Quick diff of packages/services/users after a config change."</td>
+<td>configsnap</td>
+</tr>
+<tr>
+<td>"Given this snapshot, how do I get back to that state?"</td>
+<td>tibet-snap rollback_plan</td>
+</tr>
+</table>
+
+<h2>If this happens again</h2>
+
+<ol>
+<li>
+<strong>No decorations, Alt-Tab dead.</strong> Run
+<code>pgrep -x xfwm4</code>. If it prints nothing, the WM is not running.
+</li>
+<li>
+<strong>Start it manually, compositor off.</strong>
+<pre><code>setsid nohup xfwm4 --compositor=off &gt;/tmp/xfwm4.log 2&gt;&amp;1 &lt;/dev/null &amp;</code></pre>
+If decorations return, the persistent setting was overwritten — reapply it
+with <code>xfconf-query -c xfwm4 -p /general/use_compositing -s false</code>.
+</li>
+<li>
+<strong>WM still dies immediately.</strong> Read
+<code>/tmp/xfwm4.log</code>. If it is empty, the failure happened before
+logging started, which is the RENDER case. Confirm with
+<code>xdpyinfo | grep -i render</code>.
+</li>
+<li>
+<strong>RENDER is present but the WM still dies.</strong> Check
+<code>/var/log/Xorg.0.log</code> for driver errors, and try a different
+compositor backend if you need compositing.
+</li>
+<li>
+<strong>Decorations return but menus are black.</strong> The compositor is
+off and CSD is on. Add <code>GTK_CSD=0</code> to
+<code>~/.config/environment.d/</code> and log in again.
+</li>
+</ol>
+
+<h2>Files in this repo</h2>
+
+<ul>
+<li>
+<a href="scripts/xfce-wm-diagnose.sh">xfce-wm-diagnose.sh</a> — read-only.
+Prints process state, compositor setting, X11 extensions, graphics driver,
+Alt-Tab binding.
+</li>
+<li>
+<a href="scripts/xfce-wm-fix.sh">xfce-wm-fix.sh</a> — idempotent and
+reversible. Starts the WM if missing, persists
+<code>use_compositing=false</code>, writes the CSD config.
+</li>
+<li>
+<a href="scripts/monitor.sh">monitor.sh</a> — safe to run from cron. Logs
+WM presence, compositor state, RENDER presence, and any statedrift or
+configsnap diff to <code>~/.local/state/xfce-forensics/</code>.
+</li>
+<li>
+<a href="scripts/recover.sh">recover.sh</a> — prints snapshot comparison
+and rollback plan. Does not execute anything.
+</li>
+</ul>
 
 <h2>References</h2>
+
 <ul>
-<li><a href="https://gitlab.xfce.org/xfce/xfwm4">xfwm4 upstream</a></li>
-<li><a href="https://man7.org/linux/man-pages/man5/environment.d.5.html">environment.d(5)</a></li>
-<li><a href="https://docs.github.com/en/rest/pages/pages">GitHub Pages API</a></li>
-<li><a href="https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site">Pages publish source</a></li>
-<li><a href="https://cli.github.com/manual/gh_api">gh api — nested fields</a></li>
-<li><a href="https://github.com/orgs/community/discussions/144171">two-step Pages workaround</a></li>
-<li><a href="https://github.com/statedrift/statedrift">statedrift</a></li>
-<li><a href="https://packages.fedoraproject.org/pkgs/configsnap/configsnap/">configsnap (Fedora)</a></li>
-<li><a href="https://pypi.org/project/tibet-snap/">tibet-snap (PyPI)</a></li>
+<li>
+<a href="https://gitlab.xfce.org/xfce/xfwm4">xfwm4 upstream</a> — the
+window manager. Its commit history is where the "abort before logging
+when RENDER is missing" behaviour lives.
+</li>
+<li>
+<a href="https://www.x.org/releases/X11R7.7/doc/libXrender/libXrender.txt">libXrender manual</a> — what RENDER does and what it needs.
+</li>
+<li>
+<a href="https://man7.org/linux/man-pages/man5/environment.d.5.html">environment.d(5)</a> — the file format and semantics for
+<code>~/.config/environment.d/</code>.
+</li>
+<li>
+<a href="https://docs.github.com/en/rest/pages/pages">GitHub Pages API</a>
+— the endpoints behind this site's deployment.
+</li>
+<li>
+<a href="https://cli.github.com/manual/gh_api">gh api manual</a> — why
+nested parameters need bracket syntax
+(<code>-f source[branch]=main</code>), not JSON strings.
+</li>
+<li>
+<a href="https://github.com/orgs/community/discussions/144171">GitHub
+community discussion 144171</a> — the two-step
+<code>workflow</code>→<code>legacy</code> Pages enable workaround.
+</li>
+<li><a href="https://github.com/statedrift/statedrift">statedrift</a> — host
+state snapshots with hash chaining.</li>
+<li>
+<a href="https://packages.fedoraproject.org/pkgs/configsnap/configsnap/">configsnap</a> — Fedora package page.
+</li>
+<li><a href="https://pypi.org/project/tibet-snap/">tibet-snap</a> — PyPI page.</li>
 </ul>
+
+<p class="muted">
+This page is the explainer half of the repository. The scripts under
+<code>scripts/</code> are the executable half. Every command and output on
+this page can be reproduced from a clean Fedora 43 XFCE install. No
+secrets, hostnames, or IP addresses are included.
+</p>
 
 </main></body></html>
